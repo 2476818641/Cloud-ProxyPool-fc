@@ -1,6 +1,7 @@
 # 编译产物
 *.exe~
 client/cloud-proxy
+client/*.exe
 
 # 证书文件
 client/certs/*.crt
