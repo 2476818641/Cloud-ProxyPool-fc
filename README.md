@@ -66,6 +66,8 @@ access_key_id = "YOUR_ACCESS_KEY_ID"
 access_key_secret = "YOUR_ACCESS_KEY_SECRET"
 
 [deployment]
+# Optional fallback for non-interactive runs.
+# In a normal terminal, deploy.py will prompt you to choose region groups.
 regions = ["cn-shanghai", "cn-hangzhou", "cn-beijing", "cn-shenzhen"]
 function_name = "cloud_proxy_pool_func"
 handler = "index.handler"
@@ -78,6 +80,14 @@ internet_access = true
 ```
 
 After deployment, `deploy.py` writes the generated function URLs into `client/config.toml`.
+
+Interactive region groups:
+
+- `1` Asia Pacific - China: Shanghai, Hangzhou, Beijing, Shenzhen, Chengdu
+- `2` Asia Pacific - Other: Tokyo, Seoul, Singapore, Kuala Lumpur, Jakarta, Bangkok
+- `3` Europe & Americas: Frankfurt, London, Silicon Valley, Virginia
+
+The China group intentionally excludes Hohhot and Ulanqab.
 
 ## Run Client
 

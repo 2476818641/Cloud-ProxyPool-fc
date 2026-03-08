@@ -13,6 +13,38 @@ from alibabacloud_fc20230330.client import Client as FcClient
 from alibabacloud_tea_openapi import models as open_api_models
 
 CONFIG_FILE = "deploy.toml"
+REGION_GROUPS = {
+    "1": {
+        "label": "Asia Pacific - China",
+        "regions": [
+            ("cn-shanghai", "华东2（上海）"),
+            ("cn-hangzhou", "华东1（杭州）"),
+            ("cn-beijing", "华北2（北京）"),
+            ("cn-shenzhen", "华南1（深圳）"),
+            ("cn-chengdu", "西南1（成都）"),
+        ],
+    },
+    "2": {
+        "label": "Asia Pacific - Other",
+        "regions": [
+            ("ap-northeast-1", "日本（东京）"),
+            ("ap-northeast-2", "韩国（首尔）"),
+            ("ap-southeast-1", "新加坡"),
+            ("ap-southeast-3", "马来西亚（吉隆坡）"),
+            ("ap-southeast-5", "印度尼西亚（雅加达）"),
+            ("ap-southeast-7", "泰国（曼谷）"),
+        ],
+    },
+    "3": {
+        "label": "Europe & Americas",
+        "regions": [
+            ("eu-central-1", "德国（法兰克福）"),
+            ("eu-west-1", "英国（伦敦）"),
+            ("us-west-1", "美国（硅谷）"),
+            ("us-east-1", "美国（弗吉尼亚）"),
+        ],
+    },
+}
 
 
 def load_config():
@@ -40,6 +72,62 @@ def create_zip(source_dir, output_filename):
                 file_path = os.path.join(root, filename)
                 arcname = os.path.relpath(file_path, source_dir)
                 zipf.write(file_path, arcname)
+
+
+def dedupe_regions(regions):
+    result = []
+    seen = set()
+    for region in regions:
+        if region not in seen:
+            seen.add(region)
+            result.append(region)
+    return result
+
+
+def prompt_region_selection(default_regions):
+    print("\nSelect deployment region groups:")
+    print("  1. Asia Pacific - China")
+    print("     华东2（上海）, 华东1（杭州）, 华北2（北京）, 华南1（深圳）, 西南1（成都）")
+    print("     Excluded: 华北5（呼和浩特）, 华北6（乌兰察布）")
+    print("  2. Asia Pacific - Other")
+    print("     日本（东京）, 韩国（首尔）, 新加坡, 马来西亚（吉隆坡）, 印度尼西亚（雅加达）, 泰国（曼谷）")
+    print("  3. Europe & Americas")
+    print("     德国（法兰克福）, 英国（伦敦）, 美国（硅谷）, 美国（弗吉尼亚）")
+    if default_regions:
+        print(f"Press Enter to use config fallback: {default_regions}")
+
+    while True:
+        raw = input("Choose groups (e.g. 1,3): ").strip()
+        if not raw:
+            if default_regions:
+                return dedupe_regions(default_regions)
+            print("[hint] at least one group is required")
+            continue
+
+        selected_groups = [item.strip() for item in raw.split(",") if item.strip()]
+        invalid = [item for item in selected_groups if item not in REGION_GROUPS]
+        if invalid:
+            print(f"[error] invalid group selection: {', '.join(invalid)}")
+            continue
+
+        regions = []
+        for key in selected_groups:
+            regions.extend(region for region, _ in REGION_GROUPS[key]["regions"])
+        regions = dedupe_regions(regions)
+
+        print(f"[+] selected regions: {regions}")
+        confirm = input("Continue with these regions? [Y/n]: ").strip().lower()
+        if confirm in ("", "y", "yes"):
+            return regions
+
+
+def resolve_regions(conf):
+    default_regions = conf["deployment"].get("regions", [])
+    if sys.stdin.isatty():
+        return prompt_region_selection(default_regions)
+    if default_regions:
+        return dedupe_regions(default_regions)
+    raise RuntimeError("no regions configured and interactive selection is unavailable")
 
 
 def get_client(region, access_key_id, access_key_secret):
@@ -284,7 +372,7 @@ def main():
         code_content = handle.read()
 
     success_urls = []
-    regions = conf["deployment"]["regions"]
+    regions = resolve_regions(conf)
     print(f"\n[+] deploying to {len(regions)} regions: {regions}")
 
     for region in regions:

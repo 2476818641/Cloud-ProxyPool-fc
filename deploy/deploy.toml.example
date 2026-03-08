@@ -3,6 +3,8 @@ access_key_id = "YOUR_ACCESS_KEY_ID"
 access_key_secret = "YOUR_ACCESS_KEY_SECRET"
 
 [deployment]
+# Optional fallback for non-interactive runs.
+# Interactive mode will prompt you to choose groups instead of editing this list.
 regions = ["cn-shanghai", "cn-hangzhou", "cn-beijing", "cn-shenzhen"]
 function_name = "cloud_proxy_pool_func"
 handler = "index.handler"
