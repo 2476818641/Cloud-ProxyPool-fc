@@ -23,9 +23,21 @@ type ClientConfig struct {
 }
 
 type CloudConfig struct {
-	FunctionURLs []string `toml:"function_urls"`
-	Region       string   `toml:"region"`
-	Token        string   `toml:"token"`
+	FunctionURLs []string    `toml:"function_urls"`
+	Region       string      `toml:"region"`
+	Token        string      `toml:"token"`
+	Redis        RedisConfig `toml:"redis"`
+}
+
+type RedisConfig struct {
+	Addr            string `toml:"addr"`
+	Password        string `toml:"password"`
+	DB              int    `toml:"db"`
+	KeyPrefix       string `toml:"key_prefix"`
+	LeaseTTLSeconds int    `toml:"lease_ttl_seconds"`
+	CooldownSeconds int    `toml:"cooldown_seconds"`
+	AcquireRetries  int    `toml:"acquire_retries"`
+	RetryDelayMs    int    `toml:"retry_delay_ms"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -48,6 +60,15 @@ func CreateDefaultConfig(path string) error {
 				"https://your-function.cn-shenzhen.fc.aliyuncs.com",
 			},
 			Region: "multi-region",
+			Redis: RedisConfig{
+				Addr:            "127.0.0.1:6379",
+				DB:              0,
+				KeyPrefix:       "cloud_proxy_pool",
+				LeaseTTLSeconds: 120,
+				CooldownSeconds: 120,
+				AcquireRetries:  3,
+				RetryDelayMs:    200,
+			},
 		},
 	}
 

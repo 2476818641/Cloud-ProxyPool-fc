@@ -16,6 +16,17 @@ auth_type = "anonymous"
 internet_access = true
 description = "Cloud ProxyPool over Alibaba Cloud Function Compute"
 
+[redis]
+# These values are written into client/config.toml as [cloud.redis].
+addr = "127.0.0.1:6379"
+password = ""
+db = 0
+key_prefix = "cloud_proxy_pool"
+lease_ttl_seconds = 120
+cooldown_seconds = 120
+acquire_retries = 3
+retry_delay_ms = 200
+
 [health_check]
 enable = true
 test_url = "http://myip.ipip.net"

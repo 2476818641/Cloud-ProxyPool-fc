@@ -77,9 +77,19 @@ memory_size = 512
 trigger_name = "http_trigger"
 auth_type = "anonymous"
 internet_access = true
+
+[redis]
+addr = "127.0.0.1:6379"
+password = ""
+db = 0
+key_prefix = "cloud_proxy_pool"
+lease_ttl_seconds = 120
+cooldown_seconds = 120
+acquire_retries = 3
+retry_delay_ms = 200
 ```
 
-After deployment, `deploy.py` writes the generated function URLs into `client/config.toml`.
+After deployment, `deploy.py` writes the generated function URLs and Redis leasing config into `client/config.toml`.
 
 Interactive region groups:
 
@@ -96,6 +106,27 @@ cd client
 go build
 ./cloud-proxy.exe -C config.toml
 ```
+
+To enable Redis-backed node leasing, add this block to `client/config.toml`:
+
+```toml
+[cloud.redis]
+addr = "127.0.0.1:6379"
+password = ""
+db = 0
+key_prefix = "cloud_proxy_pool"
+lease_ttl_seconds = 120
+cooldown_seconds = 120
+acquire_retries = 3
+retry_delay_ms = 200
+```
+
+Behavior:
+
+- When Redis is configured, nodes are leased through Redis before each request.
+- `lease_ttl_seconds = 120` matches your current 2-minute window by default.
+- Failed nodes are written to Redis cooldown so multiple client instances avoid the same bad exit.
+- If Redis is not configured, the client falls back to local round-robin scheduling.
 
 Default config examples point to FC HTTP trigger URLs such as:
 
