@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/fatih/color"
 )
@@ -60,9 +61,10 @@ func main() {
 	}
 
 	showBanner(conf, ip, provider.UsingRedisLease())
+	listenAddrs := conf.Client.HTTPListenAddrs()
 
 	srv := proxy.NewProxyServer(
-		conf.Client.ListenAddr,
+		listenAddrs,
 		conf.Client.SocksAddr,
 		conf.Client.User,
 		conf.Client.Password,
@@ -82,6 +84,7 @@ func main() {
 }
 
 func showBanner(conf *config.Config, ip string, redisLease bool) {
+	listenAddrs := conf.Client.HTTPListenAddrs()
 	banner := `
    ________                __   ____                        ____             __
   / ____/ /___  __  ______/ /  / __ \_________  ____  __  _/ __ \____  ____ / /
@@ -92,7 +95,7 @@ func showBanner(conf *config.Config, ip string, redisLease bool) {
 `
 	color.HiBlue(banner)
 	fmt.Println("================================================================")
-	color.Green(" [Client] Listen Addr : %s", conf.Client.ListenAddr)
+	color.Green(" [Client] Listen Addr : %s", strings.Join(listenAddrs, ", "))
 	color.Green(" [Cloud]  Node Count  : %d", len(conf.Cloud.FunctionURLs))
 	color.Green(" [Health] Check       : PASS")
 	color.Green(" [ExitIP] Current IP  : %s", ip)
@@ -103,6 +106,6 @@ func showBanner(conf *config.Config, ip string, redisLease bool) {
 	}
 	fmt.Println("================================================================")
 	fmt.Println("Configure your tools to use this proxy.")
-	fmt.Println("Example: export http_proxy=http://" + conf.Client.ListenAddr + " https_proxy=http://" + conf.Client.ListenAddr)
+	fmt.Println("Example: export http_proxy=http://" + listenAddrs[0] + " https_proxy=http://" + listenAddrs[0])
 	fmt.Println("Install the CA certificate in client/certs before using HTTPS MITM.")
 }

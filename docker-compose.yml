@@ -1,0 +1,36 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  cloud-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      DEPLOY_CONFIG_FILE: /app/config/deploy.toml
+      CLIENT_CONFIG_PATH: /app/runtime/client.toml
+      AUTO_DEPLOY_ON_START: "true"
+    volumes:
+      - ./config:/app/config
+      - ./runtime:/app/runtime
+    ports:
+      - "10800-10810:10800-10810"
+      - "8081:8081"
+
+volumes:
+  redis-data:

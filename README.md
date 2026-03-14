@@ -1,141 +1,105 @@
-# Cloud ProxyPool
+# cc-Alpha Docker
 
-Distributed HTTP/SOCKS proxy pool backed by Alibaba Cloud Function Compute.
+这个目录是 `cc-Alpha` 的 Docker 打包版，内置：
 
-Based on and modified from:
-- https://github.com/25smoking/CloudProxyPool
+- `redis` 服务
+- 阿里云 FC 自动部署脚本
+- Cloud ProxyPool 客户端
 
-## Layout
+容器启动流程是：
 
-```text
-client/   Go proxy client
-server/   FC function code (Python)
-deploy/   FC deployment script and config
-```
+1. 读取 [config/deploy.toml](/root/vscode/cc-Alpha-docker/config/deploy.toml)
+2. 根据阿里云 `AccessKey` 和 `regions` 部署/更新 FC
+3. 生成运行期客户端配置到 `runtime/client.toml`
+4. 启动本地 HTTP/SOCKS 代理
 
-## Alibaba Cloud FC
+## 使用
 
-This project now targets Alibaba Cloud Function Compute 3.0.
+先编辑 [config/deploy.toml](/root/vscode/cc-Alpha-docker/config/deploy.toml)：
 
-- Runtime: `python3.10`
-- Handler: `index.handler`
-- Trigger: HTTP trigger with anonymous access
-- Deploy SDK: `alibabacloud_fc20230330`
+- 填入 `access_key_id`
+- 填入 `access_key_secret`
+- 修改 `deployment.regions`
+- 按需要修改 `client.listen_addr` 或 `client.listen_addrs`
 
-The function receives a JSON request like:
-
-```json
-{
-  "method": "GET",
-  "url": "http://example.com",
-  "headers": {
-    "User-Agent": "CloudProxyPool"
-  },
-  "body": "",
-  "is_body_base64": false
-}
-```
-
-The function returns:
-
-```json
-{
-  "status_code": 200,
-  "headers": {
-    "content-type": "text/plain"
-  },
-  "content": "base64-encoded-response-body",
-  "is_content_base64": true
-}
-```
-
-## Deploy
+如果你不想手改配置，可以先运行交互式脚本：
 
 ```bash
-cd deploy
-pip install -r requirements.txt
-copy deploy.toml.example deploy.toml
-python deploy.py
+cd /root/vscode/cc-Alpha-docker
+./scripts/configure-deploy.sh
 ```
 
-Edit `deploy/deploy.toml` first:
+脚本会：
 
-```toml
-[aliyun]
-access_key_id = "YOUR_ACCESS_KEY_ID"
-access_key_secret = "YOUR_ACCESS_KEY_SECRET"
+- 让你选择“自定义地区”或“按区域组选择”
+- 自定义地区支持用逗号填写多个，例如 `cn-shanghai,cn-beijing`
+- 区域组支持选择：
+  - 亚太（中国）
+  - 亚太（非中国）
+  - 欧美地区
+- 最后再提示输入阿里云 `AccessKey ID` 和 `AccessKey Secret`
+- 自动写入 [config/deploy.toml](/root/vscode/cc-Alpha-docker/config/deploy.toml)
 
-[deployment]
-# Optional fallback for non-interactive runs.
-# In a normal terminal, deploy.py will prompt you to choose region groups.
-regions = ["cn-shanghai", "cn-hangzhou", "cn-beijing", "cn-shenzhen"]
-function_name = "cloud_proxy_pool_func"
-handler = "index.handler"
-runtime = "python3.10"
-timeout = 60
-memory_size = 512
-trigger_name = "http_trigger"
-auth_type = "anonymous"
-internet_access = true
-
-[redis]
-addr = "127.0.0.1:6379"
-password = ""
-db = 0
-key_prefix = "cloud_proxy_pool"
-lease_ttl_seconds = 120
-cooldown_seconds = 120
-acquire_retries = 3
-retry_delay_ms = 200
-```
-
-After deployment, `deploy.py` writes the generated function URLs and Redis leasing config into `client/config.toml`.
-
-Interactive region groups:
-
-- `1` Asia Pacific - China: Shanghai, Hangzhou, Beijing, Shenzhen, Chengdu
-- `2` Asia Pacific - Other: Tokyo, Seoul, Singapore, Kuala Lumpur, Jakarta, Bangkok
-- `3` Europe & Americas: Frankfurt, London, Silicon Valley, Virginia
-
-The China group intentionally excludes Hohhot and Ulanqab.
-
-## Run Client
+也可以直接用一键启动脚本：
 
 ```bash
-cd client
-go build
-./cloud-proxy.exe -C config.toml
+cd /root/vscode/cc-Alpha-docker
+./start.sh
 ```
 
-To enable Redis-backed node leasing, add this block to `client/config.toml`:
+这个脚本会：
 
-```toml
-[cloud.redis]
-addr = "127.0.0.1:6379"
-password = ""
-db = 0
-key_prefix = "cloud_proxy_pool"
-lease_ttl_seconds = 120
-cooldown_seconds = 120
-acquire_retries = 3
-retry_delay_ms = 200
+- 检查 [config/deploy.toml](/root/vscode/cc-Alpha-docker/config/deploy.toml)
+- 如果发现阿里云 Key 还是占位值，自动调用 [configure-deploy.sh](/root/vscode/cc-Alpha-docker/scripts/configure-deploy.sh#L1)
+- 配置完成后自动执行 `docker compose up -d --build`
+
+如果你更喜欢手动启动，也可以直接运行：
+
+```bash
+cd /root/vscode/cc-Alpha-docker
+docker compose up -d --build
 ```
 
-Behavior:
+查看日志：
 
-- When Redis is configured, nodes are leased through Redis before each request.
-- `lease_ttl_seconds = 120` matches your current 2-minute window by default.
-- Failed nodes are written to Redis cooldown so multiple client instances avoid the same bad exit.
-- If Redis is not configured, the client falls back to local round-robin scheduling.
-
-Default config examples point to FC HTTP trigger URLs such as:
-
-```text
-https://your-function.cn-shanghai.fc.aliyuncs.com
+```bash
+docker compose logs -f cloud-proxy
 ```
 
-## Notes
+停止：
 
-- The Go client logic is cloud-vendor agnostic; only the deployed function URL format changed.
-- `server/index.py` keeps `main_handler` as an alias for backward compatibility.
-- The deployment script performs an HTTP health check before writing the node into client config.
+```bash
+docker compose down
+```
+
+## 端口
+
+默认映射：
+
+- `10800-10810`：HTTP 代理端口范围
+- `8081`：Dashboard
+- `6379`：内置 Redis
+
+说明：
+
+- 默认 `socks_addr = "0.0.0.0:10801"`，已经包含在 `10800-10810` 这个映射范围里。
+- 如果你在 `listen_addrs` 里用了更大的端口范围，需要同步修改 [docker-compose.yml](/root/vscode/cc-Alpha-docker/docker-compose.yml) 的 `ports`。
+
+## 配置文件说明
+
+主要配置都放在 [config/deploy.toml](/root/vscode/cc-Alpha-docker/config/deploy.toml)：
+
+- `[client]`：本地监听地址、是否开启多端口、SOCKS、Dashboard
+- `[aliyun]`：阿里云 AccessKey
+- `[deployment]`：要部署的 FC 区域和函数参数
+- `[redis]`：内置 Redis 连接和租借参数
+- `[health_check]`：部署后健康检查
+
+生成后的客户端配置在：
+
+- [runtime/client.toml](/root/vscode/cc-Alpha-docker/runtime/client.toml)
+
+## 备注
+
+- `config/deploy.toml` 已加入 `.gitignore`，避免误提交你的阿里云密钥。
+- 容器默认每次启动都会重新执行一次部署流程；如果你只想复用已有 `runtime/client.toml`，可以把 `docker-compose.yml` 里的 `AUTO_DEPLOY_ON_START` 改成 `"false"`。

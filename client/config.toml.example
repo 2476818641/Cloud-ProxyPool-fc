@@ -1,7 +1,10 @@
 [client]
-listen_addr = "127.0.0.1:10800"
-socks_addr = ":10801"
-dashboard_addr = ":8081"
+listen_addr = "0.0.0.0:10800"
+# Optional: listen on multiple local ports at the same time.
+# When set, `listen_addrs` takes precedence over `listen_addr`.
+# listen_addrs = ["0.0.0.0:10800", "0.0.0.0:10802", "0.0.0.0:10804"]
+socks_addr = "0.0.0.0:10801"
+dashboard_addr = "0.0.0.0:8081"
 dump = false
 debug = false
 
@@ -11,7 +14,7 @@ region = "multi-region"
 
 [cloud.redis]
 # Leave addr empty to disable Redis leasing.
-addr = "127.0.0.1:6379"
+addr = "redis:6379"
 password = ""
 db = 0
 key_prefix = "cloud_proxy_pool"

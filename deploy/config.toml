@@ -1,5 +1,5 @@
 [client]
-listen_addr = "127.0.0.1:10800"
+listen_addr = "0.0.0.0:10800"
 debug = false
 
 [cloud]
@@ -8,7 +8,7 @@ function_urls = ["https://your-function.cn-shanghai.fc.aliyuncs.com", "https://y
 region = "multi-region"
 
 [cloud.redis]
-addr = "127.0.0.1:6379"
+addr = "redis:6379"
 password = ""
 db = 0
 key_prefix = "cloud_proxy_pool"

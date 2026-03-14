@@ -1,0 +1,7 @@
+.git
+runtime/*
+config/deploy.toml
+deploy/deploy_package.zip
+**/__pycache__/
+*.pyc
+client/cloud-proxy-pool.exe

@@ -26,20 +26,21 @@ import (
 )
 
 type ProxyServer struct {
-	Addr      string
-	SocksAddr string
-	User      string
-	Password  string
-	Dump      bool
-	DumpFile  string
-	Provider  *cloud.Provider
-	Verbose   bool
-	dumpMu    sync.Mutex
+	ListenAddrs []string
+	SocksAddr   string
+	User        string
+	Password    string
+	Dump        bool
+	DumpFile    string
+	Provider    *cloud.Provider
+	Verbose     bool
+	dumpMu      sync.Mutex
 
 	// Stats (Atomic)
 	TotalRequests   uint64
 	SuccessRequests uint64
 	FailedRequests  uint64
+	nextDialIndex   uint64
 }
 
 // GetStats implements dashboard.StatsReporter
@@ -52,19 +53,19 @@ func (s *ProxyServer) GetStats() dashboard.ProxyStats {
 	}
 }
 
-func NewProxyServer(addr, socksAddr, user, password string, dump bool, dumpFile string, provider *cloud.Provider, verbose bool) *ProxyServer {
+func NewProxyServer(listenAddrs []string, socksAddr, user, password string, dump bool, dumpFile string, provider *cloud.Provider, verbose bool) *ProxyServer {
 	if dumpFile == "" {
 		dumpFile = "traffic.log"
 	}
 	return &ProxyServer{
-		Addr:      addr,
-		SocksAddr: socksAddr,
-		User:      user,
-		Password:  password,
-		Dump:      dump,
-		DumpFile:  dumpFile,
-		Provider:  provider,
-		Verbose:   verbose,
+		ListenAddrs: listenAddrs,
+		SocksAddr:   socksAddr,
+		User:        user,
+		Password:    password,
+		Dump:        dump,
+		DumpFile:    dumpFile,
+		Provider:    provider,
+		Verbose:     verbose,
 	}
 }
 
@@ -80,19 +81,31 @@ func (s *ProxyServer) Start() error {
 		fmt.Printf(" [录制] 流量录制已开启，输出文件: %s\n", s.DumpFile)
 	}
 
+	if len(s.ListenAddrs) == 0 {
+		return fmt.Errorf("未配置 HTTP 监听地址")
+	}
+
+	errCh := make(chan error, len(s.ListenAddrs)+1)
+
 	// 1. 启动 HTTP 代理 (主服务)
-	go s.startHTTPProxy()
+	for _, addr := range s.ListenAddrs {
+		go func(addr string) {
+			errCh <- s.startHTTPProxy(addr)
+		}(addr)
+	}
 
 	// 2. 启动 SOCKS5 代理 (如果已配置)
 	if s.SocksAddr != "" {
-		go s.startSocks5Proxy()
+		go func() {
+			errCh <- s.startSocks5Proxy()
+		}()
 	}
 
-	// 阻塞主 Goroutine 防止退出
-	select {}
+	// 阻塞主 Goroutine，直到任一监听器退出并返回错误
+	return <-errCh
 }
 
-func (s *ProxyServer) startHTTPProxy() {
+func (s *ProxyServer) startHTTPProxy(addr string) error {
 	proxy := goproxy.NewProxyHttpServer()
 
 	// 强制屏蔽 goproxy 内部的各种调试日志
@@ -119,17 +132,18 @@ func (s *ProxyServer) startHTTPProxy() {
 		return r, s.handleRequest(r)
 	})
 
-	log.Printf("HTTP 代理服务正在监听: %s", s.Addr)
+	log.Printf("HTTP 代理服务正在监听: %s", addr)
 	if s.User != "" {
 		log.Printf("已启用身份认证 (User: %s)", s.User)
 	}
-	if err := http.ListenAndServe(s.Addr, proxy); err != nil {
-		log.Fatalf("HTTP 代理启动失败: %v", err)
+	if err := http.ListenAndServe(addr, proxy); err != nil {
+		return fmt.Errorf("HTTP 代理启动失败 (%s): %w", addr, err)
 	}
+	return nil
 }
 
 // startSocks5Proxy 启动 SOCKS5 服务端
-func (s *ProxyServer) startSocks5Proxy() {
+func (s *ProxyServer) startSocks5Proxy() error {
 	conf := &socks5.Config{
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			// 策略路由：
@@ -148,7 +162,7 @@ func (s *ProxyServer) startSocks5Proxy() {
 			}
 
 			// 2. 连接到本地 HTTP 代理 (HTTPS / 其他)
-			proxyConn, err := net.Dial("tcp", s.Addr)
+			proxyConn, err := net.Dial("tcp", s.nextHTTPDialAddr())
 			if err != nil {
 				return nil, fmt.Errorf("连接本地 HTTP 代理失败: %v", err)
 			}
@@ -187,14 +201,14 @@ func (s *ProxyServer) startSocks5Proxy() {
 
 	server, err := socks5.New(conf)
 	if err != nil {
-		log.Printf("[错误] SOCKS5 服务初始化失败: %v", err)
-		return
+		return fmt.Errorf("SOCKS5 服务初始化失败: %w", err)
 	}
 
 	log.Printf("SOCKS5 代理服务正在监听: %s", s.SocksAddr)
 	if err := server.ListenAndServe("tcp", s.SocksAddr); err != nil {
-		log.Printf("[错误] SOCKS5 服务运行失败: %v", err)
+		return fmt.Errorf("SOCKS5 服务运行失败: %w", err)
 	}
+	return nil
 }
 
 // handleSocksHTTP 处理通过 SOCKS5 进来的普通 HTTP 流量
@@ -424,4 +438,13 @@ func (c *FakeTCPConn) LocalAddr() net.Addr {
 
 func (c *FakeTCPConn) RemoteAddr() net.Addr {
 	return &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 80}
+}
+
+func (s *ProxyServer) nextHTTPDialAddr() string {
+	if len(s.ListenAddrs) == 1 {
+		return s.ListenAddrs[0]
+	}
+
+	idx := atomic.AddUint64(&s.nextDialIndex, 1)
+	return s.ListenAddrs[(idx-1)%uint64(len(s.ListenAddrs))]
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -12,14 +13,15 @@ type Config struct {
 }
 
 type ClientConfig struct {
-	ListenAddr    string `toml:"listen_addr"`
-	SocksAddr     string `toml:"socks_addr"`
-	User          string `toml:"user"`
-	Password      string `toml:"password"`
-	Dump          bool   `toml:"dump"`
-	DumpFile      string `toml:"dump_file"`
-	DashboardAddr string `toml:"dashboard_addr"`
-	Debug         bool   `toml:"debug"`
+	ListenAddr    string   `toml:"listen_addr"`
+	ListenAddrs   []string `toml:"listen_addrs"`
+	SocksAddr     string   `toml:"socks_addr"`
+	User          string   `toml:"user"`
+	Password      string   `toml:"password"`
+	Dump          bool     `toml:"dump"`
+	DumpFile      string   `toml:"dump_file"`
+	DashboardAddr string   `toml:"dashboard_addr"`
+	Debug         bool     `toml:"debug"`
 }
 
 type CloudConfig struct {
@@ -40,6 +42,19 @@ type RedisConfig struct {
 	RetryDelayMs    int    `toml:"retry_delay_ms"`
 }
 
+func (c ClientConfig) HTTPListenAddrs() []string {
+	addrs := normalizeListenAddrs(c.ListenAddrs)
+	if len(addrs) > 0 {
+		return addrs
+	}
+
+	if addr := strings.TrimSpace(c.ListenAddr); addr != "" {
+		return []string{addr}
+	}
+
+	return []string{"0.0.0.0:10800"}
+}
+
 func LoadConfig(path string) (*Config, error) {
 	var conf Config
 	if _, err := toml.DecodeFile(path, &conf); err != nil {
@@ -51,7 +66,7 @@ func LoadConfig(path string) (*Config, error) {
 func CreateDefaultConfig(path string) error {
 	defaultConf := Config{
 		Client: ClientConfig{
-			ListenAddr: "127.0.0.1:10800",
+			ListenAddr: "0.0.0.0:10800",
 			Debug:      false,
 		},
 		Cloud: CloudConfig{
@@ -61,7 +76,7 @@ func CreateDefaultConfig(path string) error {
 			},
 			Region: "multi-region",
 			Redis: RedisConfig{
-				Addr:            "127.0.0.1:6379",
+				Addr:            "redis:6379",
 				DB:              0,
 				KeyPrefix:       "cloud_proxy_pool",
 				LeaseTTLSeconds: 120,
@@ -80,4 +95,23 @@ func CreateDefaultConfig(path string) error {
 
 	enc := toml.NewEncoder(f)
 	return enc.Encode(defaultConf)
+}
+
+func normalizeListenAddrs(addrs []string) []string {
+	seen := make(map[string]struct{}, len(addrs))
+	normalized := make([]string, 0, len(addrs))
+
+	for _, addr := range addrs {
+		addr = strings.TrimSpace(addr)
+		if addr == "" {
+			continue
+		}
+		if _, exists := seen[addr]; exists {
+			continue
+		}
+		seen[addr] = struct{}{}
+		normalized = append(normalized, addr)
+	}
+
+	return normalized
 }
