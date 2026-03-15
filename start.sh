@@ -1,11 +1,37 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_PATH="${ROOT_DIR}/config/deploy.toml"
 EXAMPLE_CONFIG_PATH="${ROOT_DIR}/config/deploy.toml.example"
-CONFIGURE_SCRIPT="${ROOT_DIR}/scripts/configure-deploy.sh"
 TLS_DIR="${ROOT_DIR}/runtime/tls"
+
+GROUP_AP_CHINA=(
+  "cn-hangzhou"
+  "cn-shanghai"
+  "cn-qingdao"
+  "cn-beijing"
+  "cn-zhangjiakou"
+  "cn-shenzhen"
+  "cn-chengdu"
+  "cn-hongkong"
+)
+
+GROUP_AP_OTHER=(
+  "ap-northeast-1"
+  "ap-northeast-2"
+  "ap-southeast-1"
+  "ap-southeast-3"
+  "ap-southeast-5"
+  "ap-southeast-7"
+)
+
+GROUP_EU_US=(
+  "eu-central-1"
+  "eu-west-1"
+  "us-west-1"
+  "us-east-1"
+)
 
 trim() {
   local value="$1"
@@ -35,10 +61,6 @@ ensure_config_file() {
 
   mkdir -p "$(dirname "$CONFIG_PATH")"
   cp "$EXAMPLE_CONFIG_PATH" "$CONFIG_PATH"
-}
-
-has_regions() {
-  grep -Eq '^regions\s*=\s*\[[^]]*[[:alnum:]]' "$CONFIG_PATH"
 }
 
 write_dashboard_addr() {
@@ -99,6 +121,59 @@ for key, pattern in patterns.items():
     text = updated
 
 config_path.write_text(text, encoding="utf-8")
+PY
+}
+
+append_region() {
+  local value
+  value="$(trim "$1")"
+  if [[ -z "$value" ]]; then
+    return
+  fi
+
+  local existing
+  for existing in "${REGIONS[@]:-}"; do
+    if [[ "$existing" == "$value" ]]; then
+      return
+    fi
+  done
+
+  REGIONS+=("$value")
+}
+
+build_regions_toml() {
+  local joined="" region
+  for region in "${REGIONS[@]}"; do
+    if [[ -n "$joined" ]]; then
+      joined+=", "
+    fi
+    joined+="\"$region\""
+  done
+  printf '[%s]' "$joined"
+}
+
+write_regions() {
+  local py regions_toml
+  py="$(python_cmd)"
+  regions_toml="$(build_regions_toml)"
+
+  "$py" - "$CONFIG_PATH" "$regions_toml" <<'PY'
+import pathlib
+import re
+import sys
+
+config_path = pathlib.Path(sys.argv[1])
+regions_toml = sys.argv[2]
+text = config_path.read_text(encoding="utf-8")
+updated, count = re.subn(
+    r'(^regions\s*=\s*).*$',
+    rf'\1{regions_toml}',
+    text,
+    flags=re.MULTILINE,
+)
+if count != 1:
+    raise SystemExit(f"配置文件中未能唯一定位 regions: {config_path}")
+config_path.write_text(updated, encoding="utf-8")
 PY
 }
 
@@ -231,6 +306,72 @@ prompt_aliyun_keys() {
   done
 }
 
+prompt_regions() {
+  local mode group_choice raw item region
+
+  while true; do
+    echo
+    echo "请选择地区配置方式："
+    echo "  1. 按区域选择"
+    echo "  2. 手动填写城市"
+    read -r -p "请输入选项 [1/2]: " mode
+    mode="$(trim "$mode")"
+
+    if [[ "$mode" == "1" ]]; then
+      while true; do
+        echo "请选择区域组："
+        echo "  1. 亚太（中国）"
+        echo "  2. 亚太（非中国）"
+        echo "  3. 欧美"
+        read -r -p "请输入选项 [1/2/3]: " group_choice
+        group_choice="$(trim "$group_choice")"
+
+        REGIONS=()
+        case "$group_choice" in
+          1)
+            for region in "${GROUP_AP_CHINA[@]}"; do
+              append_region "$region"
+            done
+            return
+            ;;
+          2)
+            for region in "${GROUP_AP_OTHER[@]}"; do
+              append_region "$region"
+            done
+            return
+            ;;
+          3)
+            for region in "${GROUP_EU_US[@]}"; do
+              append_region "$region"
+            done
+            return
+            ;;
+          *)
+            echo "无效选项，请输入 1/2/3。"
+            ;;
+        esac
+      done
+    fi
+
+    if [[ "$mode" == "2" ]]; then
+      while true; do
+        read -r -p "请输入城市（可多个，逗号分隔，如 cn-shanghai,cn-beijing）: " raw
+        REGIONS=()
+        IFS=',' read -r -a items <<< "$raw"
+        for item in "${items[@]}"; do
+          append_region "$item"
+        done
+        if [[ "${#REGIONS[@]}" -gt 0 ]]; then
+          return
+        fi
+        echo "未输入有效城市，请重新输入。"
+      done
+    fi
+
+    echo "无效选项，请输入 1 或 2。"
+  done
+}
+
 main() {
   ensure_config_file
 
@@ -243,15 +384,12 @@ main() {
 
   write_dashboard_addr
 
-  if ! has_regions; then
-    echo
-    echo "当前未配置阿里云部署区域，先补充区域配置。"
-    "$CONFIGURE_SCRIPT" --regions-only "$CONFIG_PATH"
-  fi
-
   echo
   prompt_aliyun_keys
   write_access_keys
+
+  prompt_regions
+  write_regions
 
   echo
   echo "开始构建并启动 Docker 服务..."
