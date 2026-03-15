@@ -1,0 +1,23 @@
+[client]
+  listen_addr = "0.0.0.0:10800"
+  socks_addr = "0.0.0.0:10801"
+  user = ""
+  password = ""
+  dump = false
+  dump_file = ""
+  dashboard_addr = "0.0.0.0:8081"
+  debug = false
+
+[cloud]
+  function_urls = ["https://example-1.fcapp.run", "https://example-2.fcapp.run"]
+  region = "multi-region"
+  token = ""
+  [cloud.redis]
+    addr = "redis:6379"
+    password = ""
+    db = 0
+    key_prefix = "cloud_proxy_pool"
+    lease_ttl_seconds = 120
+    cooldown_seconds = 120
+    acquire_retries = 3
+    retry_delay_ms = 200

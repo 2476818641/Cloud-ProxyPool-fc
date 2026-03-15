@@ -1,0 +1,24 @@
+[client]
+listen_addr = "0.0.0.0:10800"
+# Optional: listen on multiple local ports at the same time.
+# When set, `listen_addrs` takes precedence over `listen_addr`.
+# listen_addrs = ["0.0.0.0:10800", "0.0.0.0:10802", "0.0.0.0:10804"]
+socks_addr = "0.0.0.0:10801"
+dashboard_addr = "0.0.0.0:8081"
+dump = false
+debug = false
+
+[cloud]
+function_urls = ["https://your-function.cn-shanghai.fc.aliyuncs.com", "https://your-function.cn-shenzhen.fc.aliyuncs.com"]
+region = "multi-region"
+
+[cloud.redis]
+# Leave addr empty to disable Redis leasing.
+addr = "redis:6379"
+password = ""
+db = 0
+key_prefix = "cloud_proxy_pool"
+lease_ttl_seconds = 120
+cooldown_seconds = 120
+acquire_retries = 3
+retry_delay_ms = 200

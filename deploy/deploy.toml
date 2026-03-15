@@ -1,0 +1,40 @@
+[client]
+listen_addr = "0.0.0.0:10800"
+# Optional: expose multiple HTTP proxy ports inside the container.
+# Remember to add matching port mappings in docker-compose.yml if you use this.
+# listen_addrs = ["0.0.0.0:10800", "0.0.0.0:10802", "0.0.0.0:10804"]
+socks_addr = "0.0.0.0:10801"
+dashboard_addr = "0.0.0.0:8081"
+dump = false
+debug = false
+
+[aliyun]
+access_key_id = "YOUR_ACCESS_KEY_ID"
+access_key_secret = "YOUR_ACCESS_KEY_SECRET"
+
+[deployment]
+regions = ["cn-shanghai", "cn-hangzhou", "cn-beijing", "cn-shenzhen"]
+function_name = "cloud_proxy_pool_func"
+handler = "index.handler"
+runtime = "python3.10"
+timeout = 60
+memory_size = 512
+trigger_name = "http_trigger"
+auth_type = "anonymous"
+internet_access = true
+description = "Cloud ProxyPool over Alibaba Cloud Function Compute"
+
+[redis]
+addr = "redis:6379"
+password = ""
+db = 0
+key_prefix = "cloud_proxy_pool"
+lease_ttl_seconds = 120
+cooldown_seconds = 120
+acquire_retries = 3
+retry_delay_ms = 200
+
+[health_check]
+enable = true
+test_url = "http://myip.ipip.net"
+expected_status = 200

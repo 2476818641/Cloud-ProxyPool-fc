@@ -1,0 +1,14 @@
+config/deploy.toml
+runtime/*
+!runtime/.gitkeep
+deploy/deploy_package.zip
+**/__pycache__/
+*.pyc
+.gocache/
+.npm-cache/
+web/node_modules/
+web/dist/
+client/cloud-proxy
+client/cloud-proxy-pool.exe
+client/certs/ca.crt
+client/certs/ca.key
